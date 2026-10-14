@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     'django_rest_passwordreset',
     'drf_spectacular',
 
-    'backend',
+    'backend.apps.BackendConfig',
 ]
 
 MIDDLEWARE = [
