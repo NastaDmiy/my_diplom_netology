@@ -135,3 +135,12 @@ class OrderStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(
         choices=[c[0] for c in Order._meta.get_field('state').choices]
     )
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Сериализатор профиля — для GET и PUT /user/details."""
+
+    class Meta:
+        model = User
+        fields = ('id', 'first_name', 'last_name', 'email', 'company', 'position', 'type')
+        read_only_fields = ('id', 'email', 'type')

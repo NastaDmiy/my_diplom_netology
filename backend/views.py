@@ -25,6 +25,7 @@ from .serializers import (
     OrderSerializer, OrderConfirmSerializer,
     CategorySerializer, ShopSerializer,
     OrderStatusSerializer,
+    UserProfileSerializer,
 )
 
 
@@ -670,3 +671,35 @@ class OrderStatusView(APIView):
             )
 
         return Response({'Status': True, 'state': order.state})
+
+
+# ============================================================
+# Профиль пользователя
+# ============================================================
+
+class AccountDetails(APIView):
+    """
+    Профиль текущего пользователя.
+    GET /user/details  — посмотреть.
+    PUT /user/details  — отредактировать (first_name, last_name, company, position).
+    """
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def put(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'Status': True})
+        return Response({'Status': False, 'Errors': serializer.errors},
+                        status=status.HTTP_400_BAD_REQUEST)

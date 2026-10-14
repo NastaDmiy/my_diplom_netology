@@ -6,12 +6,14 @@ from .views import (
     ProductInfoView, BasketView, ContactView, OrderView,
     CategoryView, ShopView,
     OrderDetailView, OrderStatusView,
+    AccountDetails,
 )
 
 urlpatterns = [
     path('user/register', RegisterAccount.as_view(), name='user-register'),
     path('user/register/confirm', ConfirmAccount.as_view(), name='user-register-confirm'),
     path('user/login', LoginAccount.as_view(), name='user-login'),
+    path('user/details', AccountDetails.as_view(), name='user-details'),
 
     path('user/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
 
