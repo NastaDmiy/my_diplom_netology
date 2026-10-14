@@ -12,6 +12,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 
 from .email import send_email
 from .models import (
@@ -437,12 +438,43 @@ class OrderView(APIView):
         basket.contact = contact
         basket.save()
 
+        # Формируем состав заказа - для писем покупателю и администратору
+        items = basket.ordered_items.select_related('product_info__product', 'product_info__shop')
+        total = sum(i.product_info.price * i.quantity for i in items)
+
+        items_text = '\n'.join(
+            f'  — {i.product_info.product.name} '
+            f'(магазин: {i.product_info.shop.name}), '
+            f'{i.quantity} шт. × {i.product_info.price} ₽'
+            for i in items
+        )
+
         # Письмо покупателю
         send_email(
-            subject='Заказ оформлен',
-            message=f'Ваш заказ №{basket.id} успешно оформлен. Сумма: '
-                    f'{sum(i.product_info.price * i.quantity for i in basket.ordered_items.all())}',
+            subject=f'Заказ №{basket.id} оформлен',
+            message=(
+                f'Здравствуйте, {request.user.first_name or request.user.email}!\n\n'
+                f'Ваш заказ №{basket.id} успешно оформлен.\n'
+                f'Состав заказа:\n{items_text}\n\n'
+                f'Итого: {total} ₽\n'
+                f'Адрес доставки: {contact.city}, {contact.street}, {contact.house}\n\n'
+                f'Спасибо за заказ!'
+            ),
             recipient_list=[request.user.email],
         )
+
+        # Письмо администратору (накладная для исполнения заказа)
+        if getattr(settings, 'ADMIN_EMAIL', None):
+            send_email(
+                subject=f'Новый заказ №{basket.id}',
+                message=(
+                    f'Поступил новый заказ №{basket.id}\n'
+                    f'Покупатель: {request.user.email}\n'
+                    f'Контакт: {contact.phone}, {contact.city}, {contact.street}, {contact.house}\n\n'
+                    f'Состав заказа:\n{items_text}\n\n'
+                    f'Итого: {total} ₽'
+                ),
+                recipient_list=[settings.ADMIN_EMAIL],
+            )
 
         return Response({'Status': True, 'Order id': basket.id})
