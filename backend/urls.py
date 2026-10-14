@@ -5,6 +5,7 @@ from .views import (
     PartnerUpdate, PartnerState, PartnerOrders,
     ProductInfoView, BasketView, ContactView, OrderView,
     CategoryView, ShopView,
+    OrderDetailView, OrderStatusView,
 )
 
 urlpatterns = [
@@ -25,4 +26,6 @@ urlpatterns = [
     path('basket', BasketView.as_view(), name='basket'),
     path('contact', ContactView.as_view(), name='contact'),
     path('order', OrderView.as_view(), name='order'),
+    path('order/<int:pk>', OrderDetailView.as_view(), name='order-detail'),
+    path('order/<int:pk>/status', OrderStatusView.as_view(), name='order-status'),
 ]

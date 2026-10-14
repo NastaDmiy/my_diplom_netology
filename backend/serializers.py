@@ -127,3 +127,11 @@ class OrderConfirmSerializer(serializers.Serializer):
     """Сериализатор для подтверждения заказа (POST /order)."""
 
     contact_id = serializers.IntegerField()
+
+
+class OrderStatusSerializer(serializers.Serializer):
+    """Сериализатор для смены статуса заказа."""
+
+    status = serializers.ChoiceField(
+        choices=[c[0] for c in Order._meta.get_field('state').choices]
+    )

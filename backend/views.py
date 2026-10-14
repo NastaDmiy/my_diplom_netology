@@ -24,6 +24,7 @@ from .serializers import (
     ProductInfoSerializer, ContactSerializer,
     OrderSerializer, OrderConfirmSerializer,
     CategorySerializer, ShopSerializer,
+    OrderStatusSerializer,
 )
 
 
@@ -585,3 +586,87 @@ class ShopView(APIView):
         shops = Shop.objects.filter(state=True)
         serializer = ShopSerializer(shops, many=True)
         return Response(serializer.data)
+
+
+# ============================================================
+# Детали заказа и смена статуса
+# ============================================================
+
+class OrderDetailView(APIView):
+    """
+    Детали конкретного заказа по id.
+    GET /order/<id>
+    Доступ: владелец заказа ИЛИ поставщик, у которого в заказе есть товары.
+    """
+
+    def get(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        order = Order.objects.filter(pk=pk).first()
+        if not order:
+            return Response({'Status': False, 'Error': 'Заказ не найден'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        is_buyer = order.user_id == request.user.id
+        is_supplier = OrderItem.objects.filter(
+            order=order,
+            product_info__shop__user_id=request.user.id,
+        ).exists()
+
+        if not (is_buyer or is_supplier):
+            return Response({'Status': False, 'Error': 'Нет доступа'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+
+
+class OrderStatusView(APIView):
+    """
+    Смена статуса заказа поставщиком.
+    PUT /order/<id>/status   Тело: {"status": "confirmed"}
+    """
+
+    def put(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.type != 'shop':
+            return Response({'Status': False, 'Error': 'Только для магазинов'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        order = Order.objects.filter(pk=pk).first()
+        if not order:
+            return Response({'Status': False, 'Error': 'Заказ не найден'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if not OrderItem.objects.filter(
+            order=order,
+            product_info__shop__user_id=request.user.id,
+        ).exists():
+            return Response({'Status': False, 'Error': 'В заказе нет ваших товаров'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        serializer = OrderStatusSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'Status': False, 'Errors': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        old_state = order.state
+        order.state = serializer.validated_data['status']
+        order.save()
+
+        if old_state != order.state:
+            send_email(
+                subject=f'Статус заказа №{order.id} изменён',
+                message=(
+                    f'Ваш заказ №{order.id} перешёл в статус: {order.get_state_display()}.\n'
+                    f'Предыдущий статус: {dict(Order._meta.get_field("state").choices).get(old_state, old_state)}'
+                ),
+                recipient_list=[order.user.email],
+            )
+
+        return Response({'Status': True, 'state': order.state})
