@@ -23,6 +23,7 @@ from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     ProductInfoSerializer, ContactSerializer,
     OrderSerializer, OrderConfirmSerializer,
+    CategorySerializer, ShopSerializer,
 )
 
 
@@ -556,3 +557,31 @@ class OrderView(APIView):
             )
 
         return Response({'Status': True, 'Order id': basket.id})
+
+
+# ============================================================
+# Категории и магазины (для фильтрации покупателем)
+# ============================================================
+
+class CategoryView(APIView):
+    """
+    Список категорий.
+    GET /categories
+    """
+
+    def get(self, request, *args, **kwargs):
+        categories = Category.objects.all()
+        serializer = CategorySerializer(categories, many=True)
+        return Response(serializer.data)
+
+
+class ShopView(APIView):
+    """
+    Список магазинов.
+    GET /shops
+    """
+
+    def get(self, request, *args, **kwargs):
+        shops = Shop.objects.filter(state=True)
+        serializer = ShopSerializer(shops, many=True)
+        return Response(serializer.data)
