@@ -186,6 +186,84 @@ class PartnerUpdate(APIView):
 
         return Response({'Status': True})
 
+# ============================================================
+# Включение и выключение приёма заказов
+# ============================================================
+
+class PartnerState(APIView):
+    """
+    Включение/отключение приёма заказов магазином.
+    GET    — посмотреть текущее состояние.
+    POST   — установить состояние.  Тело: {"state": true/false}
+    """
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.type != 'shop':
+            return Response({'Status': False, 'Error': 'Только для магазинов'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        shop = Shop.objects.filter(user_id=request.user.id).first()
+        if not shop:
+            return Response({'Status': False, 'Error': 'Магазин не найден'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'Status': True, 'state': shop.state})
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.type != 'shop':
+            return Response({'Status': False, 'Error': 'Только для магазинов'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        shop = Shop.objects.filter(user_id=request.user.id).first()
+        if not shop:
+            return Response({'Status': False, 'Error': 'Магазин не найден'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        state = request.data.get('state')
+        if state is None:
+            return Response({'Status': False, 'Errors': 'Не указано поле state'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        shop.state = bool(state)
+        shop.save()
+
+        return Response({'Status': True, 'state': shop.state})
+
+# ============================================================
+# Получение списка заказов, в которых есть его товары
+# ============================================================
+
+class PartnerOrders(APIView):
+    """
+    Список заказов, в которых есть товары текущего магазина.
+    GET /partner/orders
+    """
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'Status': False, 'Error': 'Log in required'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.type != 'shop':
+            return Response({'Status': False, 'Error': 'Только для магазинов'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Заказы, где есть хотя бы одна позиция из товаров этого магазина
+        orders = Order.objects.filter(
+            ordered_items__product_info__shop__user_id=request.user.id,
+            state__in=['new', 'confirmed', 'assembled', 'sent', 'delivered'],
+        ).distinct().order_by('-dt')
+
+        serializer = OrderSerializer(orders, many=True)
+        return Response(serializer.data)
 
 # ============================================================
 # Каталог товаров
