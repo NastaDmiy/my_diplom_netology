@@ -25,6 +25,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ('id', 'first_name', 'last_name', 'email', 'password',
                   'company', 'position', 'type')
 
+    def validate_password(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_password(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages))
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop('password')
         user = User.objects.create(**validated_data)
@@ -93,10 +102,7 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ('id', 'city', 'street', 'house', 'structure',
                   'building', 'apartment', 'phone', 'user')
-        read_only_fields = ('id',)
-        extra_kwargs = {
-            'user': {'required': False},
-        }
+        read_only_fields = ('id', 'user')
 
 
 class OrderItemSerializer(serializers.ModelSerializer):

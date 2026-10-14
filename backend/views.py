@@ -50,13 +50,20 @@ class RegisterAccount(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            validate_password(request.data['password'])
+        except ValidationError as password_error:
+            return Response({'Status': False, 'Errors': [str(e) for e in password_error.messages]},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             user = serializer.save()
         except IntegrityError:
             return Response({'Status': False, 'Errors': 'Пользователь с таким email уже существует'},
                             status=status.HTTP_400_BAD_REQUEST)
 
         # Создаём токен подтверждения email
-        token, _ = ConfirmEmailToken.objects.get_or_create(user_id=user.id)
+        ConfirmEmailToken.objects.filter(user_id=user.id).delete()
+        token = ConfirmEmailToken.objects.create(user_id=user.id)
         send_email(
             subject=f'Подтверждение регистрации {user.email}',
             message=f'Ваш токен для подтверждения email: {token.key}',
@@ -155,6 +162,23 @@ class PartnerUpdate(APIView):
             return Response({'Status': False, 'Error': f'Ошибка загрузки: {e}'},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # Проверки на структуру YAML
+        if not isinstance(data, dict):
+            return Response({'Status': False, 'Error': 'YAML должен быть словарём'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if 'shop' not in data:
+            return Response({'Status': False, 'Error': 'В YAML отсутствует поле "shop"'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not isinstance(data.get('categories', []), list):
+            return Response({'Status': False, 'Error': 'Поле "categories" должно быть списком'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not isinstance(data.get('goods', []), list):
+            return Response({'Status': False, 'Error': 'Поле "goods" должно быть списком'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         shop, _ = Shop.objects.get_or_create(name=data['shop'], user_id=request.user.id)
 
         for category in data.get('categories', []):
@@ -166,6 +190,11 @@ class PartnerUpdate(APIView):
         ProductInfo.objects.filter(shop_id=shop.id).delete()
 
         for item in data.get('goods', []):
+            # Обязательные поля товара
+            required = ('id', 'category', 'name', 'model', 'price', 'price_rrc', 'quantity')
+            if any(k not in item for k in required):
+                continue  # пропускаем некорректную запись
+
             product, _ = Product.objects.get_or_create(
                 name=item['name'], category_id=item['category'])
 
@@ -179,7 +208,7 @@ class PartnerUpdate(APIView):
                 shop_id=shop.id,
             )
 
-            for name, value in item.get('parameters', {}).items():
+            for name, value in (item.get('parameters') or {}).items():
                 parameter_object, _ = Parameter.objects.get_or_create(name=name)
                 ProductParameter.objects.create(
                     product_info_id=product_info.id,
@@ -282,11 +311,14 @@ class ProductInfoView(APIView):
         query = Q(shop__state=True)
         shop_id = request.query_params.get('shop_id')
         category_id = request.query_params.get('category_id')
+        search = request.query_params.get('search')
 
         if shop_id:
             query &= Q(shop_id=shop_id)
         if category_id:
             query &= Q(product__category_id=category_id)
+        if search:
+            query &= Q(product__name__icontains=search)
 
         queryset = ProductInfo.objects.filter(query).select_related(
             'shop', 'product__category',
@@ -395,11 +427,12 @@ class BasketView(APIView):
                             status=status.HTTP_404_NOT_FOUND)
 
         ids = [item.get('product_info') for item in items if item.get('product_info')]
-        deleted, _ = OrderItem.objects.filter(
+        deleted_info = OrderItem.objects.filter(
             order=basket, product_info_id__in=ids,
         ).delete()
+        deleted_count = deleted_info[1].get('backend.OrderItem', 0)
 
-        return Response({'Status': True, 'Deleted items': deleted})
+        return Response({'Status': True, 'Deleted items': deleted_count})
 
 
 # ============================================================
@@ -471,8 +504,9 @@ class ContactView(APIView):
             return Response({'Status': False, 'Errors': 'Не указан id контакта'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        deleted, _ = Contact.objects.filter(id=contact_id, user=request.user).delete()
-        return Response({'Status': True, 'Deleted': deleted})
+        deleted_info = Contact.objects.filter(id=contact_id, user=request.user).delete()
+        deleted_count = deleted_info[1].get('backend.Contact', 0)
+        return Response({'Status': True, 'Deleted': deleted_count})
 
 
 # ============================================================
